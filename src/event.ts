@@ -1,7 +1,12 @@
 'use strict';
 
-import type {RRule} from 'rrule';
+import type { RRule } from 'rrule';
 import uuid from 'uuid-random';
+import ICalAlarm, { ICalAlarmData } from './alarm';
+import ICalAttachment, { ICalAttachmentData } from './attachment';
+import ICalAttendee, { ICalAttendeeData } from './attendee';
+import ICalCalendar from './calendar';
+import ICalCategory, { ICalCategoryData } from './category';
 import {
     addOrGetCustomAttributes,
     checkDate,
@@ -14,10 +19,6 @@ import {
     toDate,
     toJSON
 } from './tools';
-import ICalAttendee, {ICalAttendeeData} from './attendee';
-import ICalAlarm, {ICalAlarmData} from './alarm';
-import ICalCategory, {ICalCategoryData} from './category';
-import ICalCalendar from './calendar';
 import {
     ICalDateTimeValue,
     ICalDescription,
@@ -27,7 +28,6 @@ import {
     ICalRepeatingOptions,
     ICalWeekday
 } from './types';
-
 
 export enum ICalEventStatus {
     CONFIRMED = 'CONFIRMED',
@@ -69,6 +69,7 @@ export interface ICalEventData {
     description?: ICalDescription | string | null,
     organizer?: ICalOrganizer | string | null,
     attendees?: ICalAttendee[] | ICalAttendeeData[],
+    attachments?: ICalAttachment[] | ICalAttachmentData[],
     alarms?: ICalAlarm[] | ICalAlarmData[],
     categories?: ICalCategory[] | ICalCategoryData[],
     status?: ICalEventStatus | null,
@@ -97,6 +98,7 @@ interface ICalEventInternalData {
     location: ICalLocation | null,
     description: ICalDescription | null,
     organizer: ICalOrganizer | null,
+    attachments: ICalAttachment[],
     attendees: ICalAttendee[],
     alarms: ICalAlarm[],
     categories: ICalCategory[],
@@ -126,6 +128,7 @@ export interface ICalEventJSONData {
     location: ICalLocation | null,
     description: ICalDescription | null,
     organizer: ICalOrganizer | null,
+    attachments: ICalAttachment[],
     attendees: ICalAttendee[],
     alarms: ICalAlarm[],
     categories: ICalCategory[],
@@ -188,6 +191,7 @@ export default class ICalEvent {
             location: null,
             description: null,
             organizer: null,
+            attachments: [],
             attendees: [],
             alarms: [],
             categories: [],
@@ -221,6 +225,7 @@ export default class ICalEvent {
         data.location !== undefined && this.location(data.location);
         data.description !== undefined && this.description(data.description);
         data.organizer !== undefined && this.organizer(data.organizer);
+        data.attachments !== undefined && this.attachments(data.attachments);
         data.attendees !== undefined && this.attendees(data.attendees);
         data.alarms !== undefined && this.alarms(data.alarms);
         data.categories !== undefined && this.categories(data.categories);
@@ -844,6 +849,73 @@ export default class ICalEvent {
         return this;
     }
 
+    /**
+     * Creates a new [[`ICalAttendee`]] and returns it. Use options to prefill
+     * the attendee's attributes. Calling this method without options will create
+     * an empty attendee.
+     *
+     * ```javascript
+     * const cal = ical();
+     * const event = cal.createEvent();
+     * const attendee = event.createAttendee({email: 'hui@example.com', name: 'Hui'});
+     *
+     * // add another attendee
+     * event.createAttendee('Buh <buh@example.net>');
+     * ```
+     *
+     * As with the organizer, you can also add an explicit `mailto` address.
+     *
+     * ```javascript
+     * event.createAttendee({email: 'hui@example.com', name: 'Hui', mailto: 'another@mailto.com'});
+     *
+     * // overwrite an attendee's mailto address
+     * attendee.mailto('another@mailto.net');
+     * ```
+     *
+     * @since 0.2.0
+     */
+    createAttachment(data: ICalAttachment | ICalAttachmentData): ICalAttachment {
+        if (data instanceof ICalAttachment) {
+            this.data.attachments.push(data);
+            return data;
+        }
+
+        const attachment = new ICalAttachment(data, this);
+        this.data.attachments.push(attachment);
+        return attachment;
+    }
+
+    /**
+     * Get all attachments
+     * @since 0.2.0
+     */
+    attachments(): ICalAttachment[];
+
+    /**
+      * Add multiple attachments to your event
+      *
+      * ```javascript
+      * const event = ical().createEvent();
+      *
+      * cal.attachments([
+      *     {email: 'a@example.com', name: 'Person A'},
+      *     {email: 'b@example.com', name: 'Person B'}
+      * ]);
+      *
+      * cal.attachments(); // --> [ICalAttendee, ICalAttendee]
+      * ```
+      *
+      * @since 0.2.0
+      */
+    attachments(attachments: (ICalAttachment | ICalAttachmentData)[]): this;
+    attachments(attachments?: (ICalAttachment | ICalAttachmentData)[]): this | ICalAttachment[] {
+        if (!attachments) {
+            return this.data.attachments;
+        }
+ 
+        attachments.forEach(attachment => this.createAttachment(attachment));
+        return this;
+    }
 
     /**
      * Creates a new [[`ICalAttendee`]] and returns it. Use options to prefill
@@ -1535,6 +1607,11 @@ export default class ICalEvent {
             }
             g += '\r\n';
         }
+
+        // ATTACHMENTS
+        this.data.attachments.forEach(function (attachment) {
+            g += attachment.toString();
+        });
 
         // ATTENDEES
         this.data.attendees.forEach(function (attendee) {
